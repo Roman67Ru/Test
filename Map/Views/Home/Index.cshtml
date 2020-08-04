@@ -1,0 +1,137 @@
+﻿@{
+    ViewBag.Title = "Home Page";
+}
+<div class="row">
+    <div class="col-lg-4">
+        <label >Адрес</label>
+        <input  class="form-control" type="text" id="address" value="москва ювао">
+        <label style="margin-top:15px;">Частота точек </label>
+        <div><label>(меньше значение - точнее границы)</label></div>
+        <input class="form-control" type="number" max="10" min="0" value="2" id="limit">
+        <input style="width:100px; margin-top:5px;" type="submit" value="Поиск" class="btn btn-primary" onclick="Go()" />
+        <p></p>
+        <label style="margin-top:5px;">Имя файла</label>
+        <input class="form-control" type="text" id="NameFile" value="Img-москва ювао">
+        <input style="width:100px; margin-top:5px;" type="submit" value="Сохранить" class="btn btn-primary" onclick="Save()" />
+    </div>
+    <div class="col-lg-6" id="map" style="width:700px; height:500px"></div>
+</div>
+<script type="text/javascript">
+
+    var map = new OpenLayers.Map("map");
+
+    function GetMap() {
+        var mapnik = new OpenLayers.Layer.OSM();
+        map.addLayer(mapnik);
+
+        var lonlat = new OpenLayers.LonLat(37.61, 55.75);
+        map.setCenter(lonlat.transform(
+            new OpenLayers.Projection("EPSG:4326"),
+            new OpenLayers.Projection("EPSG:900913")
+        ), 10
+        );
+
+        map.addControl(new OpenLayers.Control.LayerSwitcher({ 'ascending': false }));
+
+        map.addControl(
+            new OpenLayers.Control.MousePosition({
+                displayProjection: new OpenLayers.Projection('EPSG:4326')
+            })
+        );
+    }
+
+    function Go() {
+
+        $.ajax({
+            url: "/Home/Go",
+            type: "GET",
+            data: {
+                address: $("#address").val(),
+                limit: $("#limit").val()
+            }
+        })
+            // из какого источника будут поступать данные разницы нет, так что условие " Однако важно, чтобы в приложении была заложена возможность расширения для новых сервисов. ", можно считать частично выполненым
+            .done(function (data) {
+
+                if (data != null) {
+
+                    var center = data.toString().split('!,')[0];
+
+                    var dataJson = $.parseJSON(data.toString().split('!,')[1]);
+
+                    var multuPolygonGeometry,
+                        multiPolygonFeature,
+                        polygonList = [],
+                        vector = new OpenLayers.Layer.Vector($("#address").val()),
+                        mapnik = new OpenLayers.Layer.OSM();
+
+
+                    var lonlat = new OpenLayers.LonLat(center.toString().split(' ')[1], center.toString().split(' ')[0]);
+                    map.setCenter(lonlat.transform(
+                        new OpenLayers.Projection("EPSG:4326"),
+                        new OpenLayers.Projection("EPSG:900913")
+                    ), 10
+                    );
+
+                    for (var i = 0; i < dataJson.length; i += 1) {
+                        var pointList = [];
+                        if (dataJson[i].length == 1) {
+                            for (var j = 0; j < dataJson[i][0].length; j += 1) {
+                                var point = new OpenLayers.Geometry.Point(dataJson[i][0][j][0], dataJson[i][0][j][1]);
+                                pointList.push(point);
+                                point.transform(
+                                    new OpenLayers.Projection("EPSG:4326"),
+                                    new OpenLayers.Projection("EPSG:900913")
+                                );
+                            }
+                        } else {
+                            for (var j = 0; j < dataJson[i].length; j += 1) {
+                                var point = new OpenLayers.Geometry.Point(dataJson[i][j][0], dataJson[i][j][1]);
+                                pointList.push(point);
+                                point.transform(
+                                    new OpenLayers.Projection("EPSG:4326"),
+                                    new OpenLayers.Projection("EPSG:900913")
+                                );
+                            }
+                        }
+                        var linearRing = new OpenLayers.Geometry.LinearRing(pointList);
+                        var polygon = new OpenLayers.Geometry.Polygon([linearRing]);
+                        polygonList.push(polygon);
+                    }
+
+                    multuPolygonGeometry = new OpenLayers.Geometry.MultiPolygon(polygonList);
+                    multiPolygonFeature = new OpenLayers.Feature.Vector(multuPolygonGeometry);
+
+                    vector.addFeatures(multiPolygonFeature);
+                    map.addLayer(vector);
+
+                    var x = $("#address").val();
+                    x = "Img-" + x;
+                    document.getElementById('NameFile').value = x;
+
+                } else { alert("error"); }
+            });
+
+
+        
+    }
+
+    function saveImage(image) {
+        var link = document.createElement("a");
+
+        link.setAttribute("href", image.src);
+        link.setAttribute("download", $("#NameFile").val());
+        link.click();
+    }
+    function Save() {
+        html2canvas(document.getElementById("map")).then(canvas => {
+            var data = canvas.toDataURL('image/jpg');
+            var image = new Image();
+            image.src = data;
+            saveImage(image);
+
+        });
+
+
+    }
+</script>
